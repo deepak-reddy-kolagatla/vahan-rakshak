@@ -1,0 +1,41 @@
+# Cloud Build pipeline to build and deploy Vahan-Rakshak to Cloud Run
+# Usage:
+#   gcloud builds submit --config cloudbuild.yaml \
+#     --substitutions=_REGION=us-central1,_REPO=vahan-rakshak,_IMAGE=vahan-rakshak,_SERVICE=vahan-rakshak
+#
+# Expectation: Artifact Registry repo $_REPO exists in $_REGION.
+# Create once:
+#   gcloud artifacts repositories create $_REPO --repository-format=docker --location=$_REGION
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _REGION: us-central1
+  _REPO: vahan-rakshak
+  _IMAGE: vahan-rakshak
+  _SERVICE: vahan-rakshak
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'Build image'
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:$SHORT_SHA', '.']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'Push image'
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:$SHORT_SHA']
+
+  # Optional: Deploy to Cloud Run (uncomment to auto-deploy)
+  # - name: 'gcr.io/cloud-builders/gcloud'
+  #   id: 'Deploy to Cloud Run'
+  #   args:
+  #     [
+  #       'run','deploy','${_SERVICE}',
+  #       '--image','${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:$SHORT_SHA',
+  #       '--region','${_REGION}',
+  #       '--allow-unauthenticated',
+  #       '--port','8080'
+  #     ]
+
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:$SHORT_SHA'
