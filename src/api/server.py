@@ -243,6 +243,7 @@ async def post_driver_monitoring(payload: DriverMonitoringRequest) -> Dict[str, 
         sensor_data=sensor_data,
     )
     # Return the full agent response with assessment/decision
+    logger.info(f"Driver Monitoring metrics : {res}")
     return res
 
 
@@ -274,6 +275,7 @@ async def post_speed_reading(payload: SpeedReadingRequest) -> Dict[str, Any]:
         sensor_data=sensor_data,
     )
     # Return the full agent response with assessment/decision
+    logger.info(f"Driver speed metrics : {res}")
     return res
 
 
