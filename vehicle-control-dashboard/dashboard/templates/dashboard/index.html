@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vehicle Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1"></script>
+    <style>
+        .response-box {
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .dashboard-card {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .chart-container {
+            height: 300px;
+            margin-bottom: 20px;
+        }
+        .gauge-container {
+            height: 200px;
+        }
+        .vehicle-status {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .status-indicator {
+            padding: 10px;
+            border-radius: 5px;
+            background: #f8f9fa;
+            flex: 1;
+            text-align: center;
+            min-width: 150px;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .metric-card {
+            background: #fff;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .metric-label {
+            color: #666;
+            font-size: 14px;
+        }
+        #incidentPanel .incident-card {
+            background-color: #fff5f5;
+            border-left: 5px solid green;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid mt-4">
+        <h2>Vahan-Rakshak Vehicle Monitoring Dashboard</h2>
+        
+        <!-- Vehicle Status Dashboard -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="dashboard-card">
+                    <h4>Active Vehicle Status</h4>
+                    <div class="vehicle-status">
+                        <div class="status-indicator">
+                            <h6>Active Vehicles</h6>
+                            <span id="activeVehicles" class="h3">0</span>
+                        </div>
+                        <div class="status-indicator">
+                            <h6>Total Alerts</h6>
+                            <span id="totalAlerts" class="h3">0</span>
+                        </div>
+                        <div class="status-indicator">
+                            <h6>Avg Speed</h6>
+                            <span id="avgSpeed" class="h3">0 km/h</span>
+                        </div>
+                        <div class="status-indicator">
+                            <h6>Fire Alerts</h6>
+                            <span id="fireAlertsValue" class="h3">0</span>
+                        </div>
+                        <div class="status-indicator">
+                            <h6>Vehicle Submersion Alerts</h6>
+                            <span id="waterAlertsValue" class="h3">0</span>
+                        </div>
+                        <div class="status-indicator">
+                            <h6>Accident Alerts</h6>
+                            <span id="accidentAlertsValue" class="h3">0</span>
+                        </div>
+                        <div class="status-indicator">
+                            <h6>Total Incidents</h6>
+                            <span id="totalIncidents" class="h3">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Real-time Visualization -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="dashboard-card">
+                    <h4>Driver Fatigue Metrics</h4>
+                    <div class="chart-container">
+                        <canvas id="fatigueChart"></canvas>
+                    </div>
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-value" id="eyeClosureValue">0%</div>
+                            <div class="metric-label">Eye Closure</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value" id="blinkDurationValue">0ms</div>
+                            <div class="metric-label">Blink Duration</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value" id="yawningRateValue">0</div>
+                            <div class="metric-label">Yawns/min</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="dashboard-card">
+                    <h4>Vehicle Speed Monitor</h4>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="gauge-container">
+                                <canvas id="speedGauge"></canvas>
+                            </div>
+                            <div class="metrics-grid">
+                                <div class="metric-card">
+                                    <div class="metric-value" id="currentSpeedValue">0 km/h</div>
+                                    <div class="metric-label">Current Speed</div>
+                                </div>
+                                <div class="metric-card">
+                                    <div class="metric-value" id="speedLimitValue">80 km/h</div>
+                                    <div class="metric-label">Speed Limit</div>
+                                </div>
+                                <div class="metric-card">
+                                    <div class="metric-value" id="speedingDurationValue">0s</div>
+                                    <div class="metric-label">Time Over Limit</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="chart-container">
+                                <canvas id="speedHistoryChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vehicle Status Feed -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="dashboard-card">
+                    <h4>Vehicle Status Feed</h4>
+                    <div id="incidentPanel"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Response Area -->
+        <div class="mt-4">
+            <h5>Last Response</h5>
+            <pre class="response-box" id="responseArea">No response yet</pre>
+        </div>
+    </div>
+
+    <script>
+        let fatigueChart, speedHistoryChart, speedGauge;
+        const maxDataPoints = 50;
+        const vehicleData = new Map(); // store vehicle state
+        const vehicleStatusCards = new Map();
+        let totalIncidents = 0;
+
+        function initFatigueChart() {
+            fatigueChart = new Chart(document.getElementById('fatigueChart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: Array(maxDataPoints).fill(''),
+                    datasets: [
+                        { label: 'Eye Closure %', data: Array(maxDataPoints).fill(null), borderColor: 'rgb(75, 192, 192)', tension: 0.4 },
+                        { label: 'Yawning Rate', data: Array(maxDataPoints).fill(null), borderColor: 'rgb(255, 99, 132)', tension: 0.4 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, animation: false }
+            });
+        }
+
+        function initSpeedGauge() {
+            speedGauge = new Chart(document.getElementById('speedGauge').getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    datasets: [{ data: [0, 100], backgroundColor: ['rgb(75, 192, 192)', 'rgb(232, 232, 232)'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, cutout: '85%', plugins: { legend: { display: false } } }
+            });
+        }
+
+        function initSpeedHistoryChart() {
+            speedHistoryChart = new Chart(document.getElementById('speedHistoryChart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: Array(maxDataPoints).fill(''),
+                    datasets: [{ label: 'Vehicle Speed', data: Array(maxDataPoints).fill(null), borderColor: 'rgb(75, 192, 192)', tension: 0.4 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, animation: false }
+            });
+        }
+
+        const WS_URL = 'ws://localhost:8001/ws/vehicle_data/';
+        let ws;
+
+        function initWebSocket() {
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => console.log("WebSocket connected.");
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+
+                if (message.driver_data) handleDriverData(message.driver_data);
+                if (message.speed_data) handleSpeedData(message.speed_data);
+                if (message.emergency_data) handleIncidentData(message.emergency_data);
+
+                document.getElementById('responseArea').textContent = JSON.stringify(message, null, 2);
+            };
+
+            ws.onclose = () => setTimeout(initWebSocket, 2000);
+        }
+
+        function handleDriverData(data) {
+            document.getElementById('eyeClosureValue').textContent = `${(data.eye_closure_pct || 0).toFixed(1)}%`;
+            document.getElementById('blinkDurationValue').textContent = `${data.blink_duration_ms || 0}ms`;
+            document.getElementById('yawningRateValue').textContent = (data.yawning_rate_per_min || 0).toFixed(1);
+            updateDashboard(data.vehicle_id, data);
+            updateCharts(data);
+        }
+
+        function handleSpeedData(data) {
+            const currentSpeed = data.current_speed_kmh || 0;
+            const speedLimit = data.speed_limit_kmh || 80;
+
+            document.getElementById('currentSpeedValue').textContent = `${currentSpeed} km/h`;
+            document.getElementById('speedLimitValue').textContent = `${speedLimit} km/h`;
+
+            updateDashboard(data.vehicle_id, data);
+            updateCharts(data);
+        }
+
+        function handleIncidentData(data) {
+            const {
+                vehicle_id = 'N/A',
+                timestamp_ms,
+                lat = 'N/A',
+                lon = 'N/A',
+                vehicle_safety_state = {}
+            } = data;
+
+            const fire = vehicle_safety_state.fire || {};
+            const water = vehicle_safety_state.water || {};
+            const accident = vehicle_safety_state.accident || {};
+
+            // Increment total incidents only if any real incident
+            const alertActive = fire.detected || water.submersion_detected || accident.collision_detected;
+            if (alertActive) {
+                totalIncidents++;
+                document.getElementById('totalIncidents').textContent = totalIncidents;
+            }
+
+            vehicleData.set(vehicle_id, { timestamp_ms, lat, lon, vehicle_safety_state });
+
+            const statusPanel = document.getElementById('incidentPanel');
+
+            // Create or update card
+            let card;
+            if (vehicleStatusCards.has(vehicle_id)) {
+                card = vehicleStatusCards.get(vehicle_id).card;
+            } else {
+                card = document.createElement('div');
+                card.classList.add('incident-card');
+                card.id = `vehicle-${vehicle_id}`;
+                statusPanel.prepend(card);
+                vehicleStatusCards.set(vehicle_id, { card, alertActive: false });
+            }
+
+            card.innerHTML = `
+                <div><strong>Vehicle:</strong> ${vehicle_id}</div>
+                <div><strong>Last Update:</strong> ${new Date(timestamp_ms).toLocaleString()}</div>
+                <div><strong>Location:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}</div>
+                <div><strong>Fire:</strong> Detected: ${fire.detected}, Temp: ${fire.cabin_temp_c ?? '--'}°C</div>
+                <div><strong>Water:</strong> Level: ${water.level_cm ?? '--'}cm, Flood Risk: ${water.flood_risk_level ?? '--'}</div>
+                <div><strong>Accident:</strong> Collision: ${accident.collision_detected}, Severity: ${accident.collision_severity_level ?? '--'}</div>
+            `;
+
+            // Style card based on alert
+            if (alertActive) {
+                card.style.borderLeft = '5px solid red';
+                card.style.backgroundColor = '#ffe5e5';
+                vehicleStatusCards.get(vehicle_id).alertActive = true;
+            } else if (!vehicleStatusCards.get(vehicle_id).alertActive) {
+                card.style.borderLeft = '5px solid green';
+                card.style.backgroundColor = '#fff5f5';
+            }
+
+            updateVehicleStatusCounters();
+        }
+
+        function updateVehicleStatusCounters() {
+            let fireCount = 0, waterCount = 0, accidentCount = 0;
+            vehicleData.forEach(status => {
+                const vss = status.vehicle_safety_state;
+                if (vss.fire.detected) fireCount++;
+                if (vss.water.submersion_detected) waterCount++;
+                if (vss.accident.collision_detected) accidentCount++;
+            });
+            document.getElementById('fireAlertsValue').textContent = fireCount;
+            document.getElementById('waterAlertsValue').textContent = waterCount;
+            document.getElementById('accidentAlertsValue').textContent = accidentCount;
+
+            document.getElementById('totalAlerts').textContent = fireCount + waterCount + accidentCount;
+        }
+
+        function updateDashboard(vehicleId, data) {
+            const speed = data.current_speed_kmh || 0;
+            if (!vehicleData.has(vehicleId)) vehicleData.set(vehicleId, { speed, lastUpdate: Date.now() });
+            else {
+                const v = vehicleData.get(vehicleId);
+                v.speed = speed;
+                v.lastUpdate = Date.now();
+            }
+
+            const activeCount = [...vehicleData.values()].filter(v => Date.now() - v.lastUpdate < 10000).length;
+            document.getElementById('activeVehicles').textContent = activeCount;
+
+            const avgSpeed = [...vehicleData.values()].reduce((sum, v) => sum + (v.speed || 0), 0) / vehicleData.size;
+            document.getElementById('avgSpeed').textContent = `${(avgSpeed || 0).toFixed(1)} km/h`;
+        }
+
+        function updateCharts(data) {
+            if (data.eye_closure_pct !== undefined) {
+                fatigueChart.data.datasets[0].data.push(data.eye_closure_pct);
+                fatigueChart.data.datasets[0].data.shift();
+                fatigueChart.update();
+            }
+            if (data.yawning_rate_per_min !== undefined) {
+                fatigueChart.data.datasets[1].data.push(data.yawning_rate_per_min);
+                fatigueChart.data.datasets[1].data.shift();
+                fatigueChart.update();
+            }
+            if (data.current_speed_kmh !== undefined) {
+                const speedPercent = (data.current_speed_kmh / (data.speed_limit_kmh || 80)) * 100;
+                speedGauge.data.datasets[0].data = [speedPercent, 100 - speedPercent];
+                speedGauge.update();
+
+                speedHistoryChart.data.datasets[0].data.push(data.current_speed_kmh);
+                speedHistoryChart.data.datasets[0].data.shift();
+                speedHistoryChart.update();
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initFatigueChart();
+            initSpeedGauge();
+            initSpeedHistoryChart();
+            initWebSocket();
+        });
+    </script>
+</body>
+</html>

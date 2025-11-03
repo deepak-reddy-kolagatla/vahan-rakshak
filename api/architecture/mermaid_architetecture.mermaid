@@ -1,0 +1,91 @@
+%%{init: {
+    'theme': 'base',
+    'themeVariables': {
+    'primaryColor': '#9cc2ff',
+    'secondaryColor': '#d8c7ff',
+    'tertiaryColor': '#9df8ff',
+    'lineColor': '#9cc2ff',
+    'fontFamily': 'IBM Plex Sans',
+    'fontSize': '28px',
+    'nodeSpacing': 130,
+    'rankSpacing': 130
+    }
+}}%%
+graph LR
+    subgraph perceive["Stage 0 · Edge Inputs"]
+        BusSensors["On-Bus Sensor Suite"]
+    DriverApp["Cargo Scan Mobile App"]
+    end
+
+    subgraph ingest["Stage 1 · IBM Cloud Integration"]
+        FastAPI["FastAPI Gateway"]
+        SensorTools[["Sensor + Actuator Tools (OpenAPI)"]]
+        WatsonCaller["watsonx Agent Caller"]
+        IAM["IBM Cloud IAM"]
+        Storage["Fleet Data Store"]
+    end
+
+    subgraph reason["Stage 2 · watsonx Orchestrate Agents"]
+    Gatekeeper["Gatekeeper_Vahan<br/>(Depot Compliance)"]
+    Guardian["Guardian_Vahan<br/>(Runtime Safety)"]
+        SpeedMonitor["SpeedMonitor_Vahan"]
+        DriverMonitor["DriverMonitor_Vahan"]
+        Evacuation["Evacuation_Vahan"]
+        SharedKB["Shared Policy Corpus"]
+    end
+
+    subgraph act["Stage 3 · Response"]
+        Actuators["Vehicle Actuators"]
+        Emergencies["Emergency Services"]
+        Fleet["Fleet Command"]
+    Dashboard["Operations Dashboard<br/>(Fatigue & Speed Visualization)"]
+    end
+
+    BusSensors -- "Telemetry" --> FastAPI
+    DriverApp -- "Scan Cargo" --> FastAPI
+    FastAPI -- "Tool calls" --> SensorTools
+    FastAPI -- "Invoke agents" --> WatsonCaller
+    WatsonCaller -- "Token" --> IAM
+    WatsonCaller -- "Orchestrate API" --> Guardian
+    WatsonCaller -- "Orchestrate API" --> Gatekeeper
+
+    Guardian -- "Skill call" --> SpeedMonitor
+    Guardian -- "Skill call" --> DriverMonitor
+    Guardian -- "Skill call" --> Evacuation
+    Guardian -- "Use tools" --> SensorTools
+    Guardian -- "Reference" --> SharedKB
+
+    Gatekeeper -- "Use tools" --> SensorTools
+    Gatekeeper -- "Reference" --> SharedKB
+    Gatekeeper -- "Trip context" --> Guardian
+
+    Guardian -- "Commands" --> Actuators
+    Guardian -- "Alerts" --> Emergencies
+    Guardian -- "Incidents" --> Fleet
+    Guardian -- "Insights" --> Dashboard
+    Gatekeeper -- "Pre-trip decision" --> Fleet
+    FastAPI -- "Operational data" --> Storage
+
+    linkStyle default color:#161616,stroke:#9cc2ff,stroke-width:2px,font-size:28px;
+
+    style perceive fill:#f7faff,stroke:#9cc2ff,stroke-width:2px,color:#0b0b0b,font-size:28px;
+    style ingest fill:#f9f6ff,stroke:#9cc2ff,stroke-width:2px,color:#0b0b0b,font-size:28px;
+    style reason fill:#fbf8ff,stroke:#d8c7ff,stroke-width:2px,color:#0b0b0b,font-size:28px;
+    style act fill:#f4fffe,stroke:#9df8ff,stroke-width:2px,color:#0b0b0b,font-size:28px;
+
+    classDef input fill:#ffffff,stroke:#a6c8ff,stroke-width:2px,color:#161616,font-weight:bold,font-size:28px,padding:32px 40px;
+    classDef orchestrator fill:#ffffff,stroke:#d4bbff,stroke-width:2px,color:#161616,font-weight:bold,font-size:28px,padding:32px 40px;
+    classDef skill fill:#ffffff,stroke:#e6d6ff,stroke-dasharray:6 4,color:#161616,font-size:28px,padding:32px 40px;
+    classDef tool fill:#ffffff,stroke:#a6c8ff,stroke-dasharray:4 3,color:#161616,font-size:28px,padding:32px 40px;
+    classDef output fill:#ffffff,stroke:#8ef4ff,stroke-width:2px,color:#161616,font-size:28px,padding:32px 40px;
+    classDef storage fill:#ffffff,stroke:#bcbcbc,stroke-dasharray:5 3,color:#161616,font-size:28px,padding:32px 40px;
+
+    class BusSensors,DriverApp input;
+    class FastAPI,WatsonCaller orchestrator;
+    class Gatekeeper,Guardian orchestrator;
+    class SpeedMonitor,DriverMonitor,Evacuation skill;
+    class SensorTools tool;
+    class Actuators,Emergencies,Fleet,Dashboard output;
+    class Storage storage;
+
+
