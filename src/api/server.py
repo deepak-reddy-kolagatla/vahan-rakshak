@@ -112,6 +112,44 @@ class SpeedReadingRequest(BaseModel):
     timestamp_ms: Optional[int] = None
 
 
+
+class FireSafetyState(BaseModel):
+    detected: bool
+    confidence_pct: float = Field(..., ge=0, le=100)
+    cabin_temp_c: float
+    battery_pack_temp_c: float
+
+
+class WaterSafetyState(BaseModel):
+    level_cm: float = Field(..., ge=0)
+    flood_risk_level: str = Field(..., pattern="^(none|low|medium|high|critical)$")
+    submersion_detected: bool
+
+
+class AccidentState(BaseModel):
+    collision_detected: bool
+    impact_g_force: float = Field(..., ge=0)
+    collision_severity_level: str = Field(..., pattern="^(none|low|medium|high|critical)$")
+
+class VehicleSafetyState(BaseModel):
+    fire: FireSafetyState
+    water: WaterSafetyState
+    accident: AccidentState
+
+class VehicleIncidentPayload(BaseModel):
+    vehicle_id: str
+    timestamp_ms: Optional[int] = Field(default_factory=lambda: int(datetime.now().timestamp() * 1000))
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    alt: Optional[float] = None
+    vehicle_safety_state: Optional[VehicleSafetyState] = None
+
+class VehicleUpdateRequest(BaseModel):
+    driver_data: Optional[DriverMonitoringRequest] = None
+    speed_data: Optional[SpeedReadingRequest] = None
+    incident_data: Optional[VehicleIncidentPayload] = None
+
+
 class GatekeeperInvokeRequest(BaseModel):
     action: str = Field(..., description="Gatekeeper action name (e.g., scan_cargo, check_compliance, authorize_vehicle)")
     payload: Dict[str, Any] = Field(..., description="Structured input payload with required fields. For scan_cargo: include vehicle_id, vehicle_class, vehicle_number, driver_name, cargo (with description, weight_kg, hazmat), etc.")
@@ -203,37 +241,6 @@ class SOSFleetNotifyRequest(BaseModel):
     message: str
 
 
-class FireSafetyState(BaseModel):
-    detected: bool
-    confidence_pct: float = Field(..., ge=0, le=100)
-    cabin_temp_c: float
-    battery_pack_temp_c: float
-
-
-class WaterSafetyState(BaseModel):
-    level_cm: float = Field(..., ge=0)
-    flood_risk_level: str = Field(..., pattern="^(none|low|medium|high|critical)$")
-    submersion_detected: bool
-
-
-class AccidentState(BaseModel):
-    collision_detected: bool
-    impact_g_force: float = Field(..., ge=0)
-    collision_severity_level: str = Field(..., pattern="^(none|low|medium|high|critical)$")
-
-
-class VehicleSafetyState(BaseModel):
-    fire: FireSafetyState
-    water: WaterSafetyState
-    accident: AccidentState
-
-
-class IncidentReadingRequest(BaseModel):
-    vehicle_id: str = Field(..., description="Vehicle identifier")
-    timestamp_ms: Optional[int] = None
-    vehicle_safety_state: VehicleSafetyState
-
-
 @app.get("/healthz")
 async def healthz() -> Dict[str, str]:
     return {"status": "ok"}
@@ -257,23 +264,92 @@ async def get_openapi_examples() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Failed to load swagger JSON")
 
 
-@app.post("/v1/driver/monitoring")
-async def post_driver_monitoring(payload: DriverMonitoringRequest) -> Dict[str, Any]:
+@app.post("/v1/vehicle/update")
+async def post_vehicle_update(payload: VehicleUpdateRequest):
+    """
+    Unified endpoint for driver monitoring, speed, and incident data.
+    Delegates to Watsonx Guardian/Incident agents accordingly.
+    """
     caller = _require_caller()
+    res = {}
+
+    # --- Driver monitoring ---
+    if payload.driver_data:
+        driver_sensor = {
+            "eye_closure_pct": payload.driver_data.eye_closure_pct,
+            "blink_duration_ms": payload.driver_data.blink_duration_ms,
+            "yawning_rate_per_min": payload.driver_data.yawning_rate_per_min,
+            "steering_variability": payload.driver_data.steering_variability,
+            "lane_departures": payload.driver_data.lane_departures,
+        }
+        res["driver"] = caller.call_guardian_agent(
+            agent_id=GUARDIAN_AGENT_ID,
+            vehicle_id=payload.driver_data.vehicle_id,
+            action=WATSONX_GUARDIAN_ACTION_MONITOR,
+            sensor_data=driver_sensor
+        )
+
+    # --- Speed ---
+    if payload.speed_data:
+        speed_sensor = {
+            "current_speed_kmh": payload.speed_data.current_speed_kmh,
+            "speed_limit_kmh": payload.speed_data.speed_limit_kmh,
+            "timestamp_ms": payload.speed_data.timestamp_ms or int(datetime.now().timestamp() * 1000),
+        }
+        res["speed"] = caller.call_guardian_agent(
+            agent_id=GUARDIAN_AGENT_ID,
+            vehicle_id=payload.speed_data.vehicle_id,
+            action=WATSONX_GUARDIAN_ACTION_SPEED,
+            sensor_data=speed_sensor
+        )
+
+ # --- Vehicle incident / safety ---
+    incident_payload = payload.incident_data
+    if not incident_payload:
+        # Default nominal state if no incident data provided
+        incident_payload = VehicleIncidentPayload(
+            vehicle_id=payload.driver_data.vehicle_id if payload.driver_data else "UNKNOWN",
+            vehicle_safety_state=VehicleSafetyState(
+                fire=FireSafetyState(detected=False, confidence_pct=0, cabin_temp_c=25.0, battery_pack_temp_c=30.0),
+                water=WaterSafetyState(level_cm=0, flood_risk_level="none", submersion_detected=False),
+                accident=AccidentState(collision_detected=False, impact_g_force=0, collision_severity_level="none")
+            )
+        )
+
     sensor_data = {
-        "eye_closure_pct": payload.eye_closure_pct,
-        "blink_duration_ms": payload.blink_duration_ms,
-        "yawning_rate_per_min": payload.yawning_rate_per_min,
-        "steering_variability": payload.steering_variability,
-        "lane_departures": payload.lane_departures,
+        "timestamp_ms": incident_payload.timestamp_ms or int(datetime.now().timestamp() * 1000),
+        "lat": getattr(incident_payload, "lat", None),
+        "lon": getattr(incident_payload, "lon", None),
+        "alt": getattr(incident_payload, "alt", None),
+        "vehicle_safety_state": incident_payload.vehicle_safety_state.dict()
     }
-    res = caller.call_guardian_agent(
+
+    res["incident"] = caller.call_guardian_agent(
         agent_id=GUARDIAN_AGENT_ID,
-        vehicle_id=payload.vehicle_id,
-        action=WATSONX_GUARDIAN_ACTION_MONITOR,
-        sensor_data=sensor_data,
+        vehicle_id=incident_payload.vehicle_id,
+        action="detect_incident",
+        sensor_data=sensor_data
     )
-    # Return the full agent response with assessment/decision
+
+    # Trigger emergency response if critical condition exists
+    vs = incident_payload.vehicle_safety_state
+    if vs.fire.detected or vs.water.submersion_detected or vs.accident.collision_detected:
+        incident_type = "unknown"
+        if vs.fire.detected:
+            incident_type = "fire"
+        elif vs.water.submersion_detected:
+            incident_type = "flood"
+        elif vs.accident.collision_detected:
+            incident_type = "collision"
+
+        emergency_res = caller.orchestrate_emergency_response(
+            guardian_agent_id=GUARDIAN_AGENT_ID,
+            vehicle_id=incident_payload.vehicle_id,
+            incident_type=incident_type,
+            sensor_data=sensor_data
+        )
+        res["incident"]["emergency_response"] = emergency_res
+    logger.info(f"Response from vehicle Monitor {res}")
     return res
 
 
@@ -290,87 +366,7 @@ async def post_gatekeeper_run(body: GatekeeperInvokeRequest) -> Dict[str, Any]:
     return res
 
 
-@app.post("/v1/speed")
-async def post_speed_reading(payload: SpeedReadingRequest) -> Dict[str, Any]:
-    caller = _require_caller()
-    sensor_data = {
-        "current_speed_kmh": payload.current_speed_kmh,
-        "speed_limit_kmh": payload.speed_limit_kmh,
-        "timestamp_ms": payload.timestamp_ms or int(datetime.now().timestamp() * 1000),
-    }
-    res = caller.call_guardian_agent(
-        agent_id=GUARDIAN_AGENT_ID,
-        vehicle_id=payload.vehicle_id,
-        action=WATSONX_GUARDIAN_ACTION_SPEED,
-        sensor_data=sensor_data,
-    )
-    # Return the full agent response with assessment/decision
-    return res
 
-@app.post("/v1/incident")
-async def post_incident_reading(payload: IncidentReadingRequest) -> Dict[str, Any]:
-    caller = _require_caller()
-    
-    # Prepare sensor data with full safety state information
-    sensor_data = {
-        "timestamp_ms": payload.timestamp_ms or int(datetime.now().timestamp() * 1000),
-        "lat": payload.lat,
-        "lon": payload.lon,
-        "alt": payload.alt,
-        "vehicle_safety_state": {
-            "fire": {
-                "detected": payload.vehicle_safety_state.fire.detected,
-                "confidence_pct": payload.vehicle_safety_state.fire.confidence_pct,
-                "cabin_temp_c": payload.vehicle_safety_state.fire.cabin_temp_c,
-                "battery_pack_temp_c": payload.vehicle_safety_state.fire.battery_pack_temp_c
-            },
-            "water": {
-                "level_cm": payload.vehicle_safety_state.water.level_cm,
-                "flood_risk_level": payload.vehicle_safety_state.water.flood_risk_level,
-                "submersion_detected": payload.vehicle_safety_state.water.submersion_detected
-            },
-            "accident": {
-                "collision_detected": payload.vehicle_safety_state.accident.collision_detected,
-                "impact_g_force": payload.vehicle_safety_state.accident.impact_g_force,
-                "collision_severity_level": payload.vehicle_safety_state.accident.collision_severity_level
-            }
-        }
-    }
-
-    # Call guardian agent with detect_incident action
-    res = caller.call_guardian_agent(
-        agent_id=GUARDIAN_AGENT_ID,
-        vehicle_id=payload.vehicle_id,
-        action="detect_incident",
-        sensor_data=sensor_data,
-    )
-
-    # If any critical conditions detected, trigger emergency response
-    if (payload.vehicle_safety_state.fire.detected or
-        payload.vehicle_safety_state.water.submersion_detected or
-        payload.vehicle_safety_state.accident.collision_detected):
-        
-        # Determine incident type for emergency response
-        incident_type = "unknown"
-        if payload.vehicle_safety_state.fire.detected:
-            incident_type = "fire"
-        elif payload.vehicle_safety_state.water.submersion_detected:
-            incident_type = "flood"
-        elif payload.vehicle_safety_state.accident.collision_detected:
-            incident_type = "collision"
-
-        # Trigger emergency response workflow
-        emergency_res = caller.orchestrate_emergency_response(
-            guardian_agent_id=GUARDIAN_AGENT_ID,
-            vehicle_id=payload.vehicle_id,
-            incident_type=incident_type,
-            sensor_data=sensor_data
-        )
-        
-        # Combine both responses
-        res["emergency_response"] = emergency_res
-
-    return res
 
 # ============ Cargo Scanner ============
 
