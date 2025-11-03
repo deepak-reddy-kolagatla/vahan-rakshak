@@ -6,8 +6,8 @@ from datetime import datetime
 import aiohttp  # for sending HTTP requests
 
 WS_URL = "ws://localhost:8001/ws/vehicle_data/"
-DRIVER_URL = "https://vahan-rakshak-dbw4.onrender.com/v1/driver/monitoring"
-SPEED_URL = "https://vahan-rakshak-dbw4.onrender.com/v1/speed"
+DRIVER_URL = "https://vahan-rakshak.onrender.com/v1/driver/monitoring"
+SPEED_URL = "https://vahan-rakshak.onrender.com/v1/speed"
 
 class VehicleSimulator:
     def __init__(self, vehicle_id="VEH001"):
