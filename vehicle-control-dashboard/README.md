@@ -1,7 +1,7 @@
 
 # 🚗 Real-Time Vehicle Monitoring Dashboard
 
-This project simulates **real-time vehicle telemetry** and **safety monitoring** using **Python**, **Django Channels (WebSockets)**, and **FastAPI**.  
+This project simulates **real-time vehicle data** and **safety monitoring** using **Python**, **Django Channels (WebSockets)**, and **FastAPI**.  
 It provides a dashboard that visualizes **driver behavior**, **vehicle speed**, and **emergency incidents** such as fire, water submersion, and collisions.
 
 ---
