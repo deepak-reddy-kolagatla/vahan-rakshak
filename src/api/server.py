@@ -111,10 +111,30 @@ class SpeedReadingRequest(BaseModel):
     speed_limit_kmh: float = Field(..., gt=0)
     timestamp_ms: Optional[int] = None
 
+
+
+class FireSafetyState(BaseModel):
+    detected: bool
+    confidence_pct: float = Field(..., ge=0, le=100)
+    cabin_temp_c: float
+    battery_pack_temp_c: float
+
+
+class WaterSafetyState(BaseModel):
+    level_cm: float = Field(..., ge=0)
+    flood_risk_level: str = Field(..., pattern="^(none|low|medium|high|critical)$")
+    submersion_detected: bool
+
+
+class AccidentState(BaseModel):
+    collision_detected: bool
+    impact_g_force: float = Field(..., ge=0)
+    collision_severity_level: str = Field(..., pattern="^(none|low|medium|high|critical)$")
+
 class VehicleSafetyState(BaseModel):
-    fire: Optional[Dict[str, Any]] = None
-    water: Optional[Dict[str, Any]] = None
-    accident: Optional[Dict[str, Any]] = None
+    fire: FireSafetyState
+    water: WaterSafetyState
+    accident: AccidentState
 
 class VehicleIncidentPayload(BaseModel):
     vehicle_id: str
@@ -283,15 +303,52 @@ async def post_vehicle_update(payload: VehicleUpdateRequest):
             sensor_data=speed_sensor
         )
 
-    # --- Vehicle incident / safety ---
-    if payload.incident_data:
-        incident_sensor = payload.incident_data.dict()
-        res["incident"] = caller.call_guardian_agent(
-            agent_id=GUARDIAN_AGENT_ID,
-            vehicle_id=payload.incident_data.vehicle_id,
-            action="process_incident",
-            sensor_data=incident_sensor
+ # --- Vehicle incident / safety ---
+    incident_payload = payload.incident_data
+    if not incident_payload:
+        # Default nominal state if no incident data provided
+        incident_payload = VehicleIncidentPayload(
+            vehicle_id=payload.driver_data.vehicle_id if payload.driver_data else "UNKNOWN",
+            vehicle_safety_state=VehicleSafetyState(
+                fire=FireSafetyState(detected=False, confidence_pct=0, cabin_temp_c=25.0, battery_pack_temp_c=30.0),
+                water=WaterSafetyState(level_cm=0, flood_risk_level="none", submersion_detected=False),
+                accident=AccidentState(collision_detected=False, impact_g_force=0, collision_severity_level="none")
+            )
         )
+
+    sensor_data = {
+        "timestamp_ms": incident_payload.timestamp_ms or int(datetime.now().timestamp() * 1000),
+        "lat": getattr(incident_payload, "lat", None),
+        "lon": getattr(incident_payload, "lon", None),
+        "alt": getattr(incident_payload, "alt", None),
+        "vehicle_safety_state": incident_payload.vehicle_safety_state.dict()
+    }
+
+    res["incident"] = caller.call_guardian_agent(
+        agent_id=GUARDIAN_AGENT_ID,
+        vehicle_id=incident_payload.vehicle_id,
+        action="detect_incident",
+        sensor_data=sensor_data
+    )
+
+    # Trigger emergency response if critical condition exists
+    vs = incident_payload.vehicle_safety_state
+    if vs.fire.detected or vs.water.submersion_detected or vs.accident.collision_detected:
+        incident_type = "unknown"
+        if vs.fire.detected:
+            incident_type = "fire"
+        elif vs.water.submersion_detected:
+            incident_type = "flood"
+        elif vs.accident.collision_detected:
+            incident_type = "collision"
+
+        emergency_res = caller.orchestrate_emergency_response(
+            guardian_agent_id=GUARDIAN_AGENT_ID,
+            vehicle_id=incident_payload.vehicle_id,
+            incident_type=incident_type,
+            sensor_data=sensor_data
+        )
+        res["incident"]["emergency_response"] = emergency_res
 
     return res
 
