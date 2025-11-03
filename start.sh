@@ -1,9 +1,6 @@
 #!/bin/bash
 # start.sh: Start FastAPI first, then Django, simulator, and Daphne
 
-echo "Starting FastAPI app on port 8080..."
-uvicorn src.api.server:app --host 0.0.0.0 --port 8080 &
-
 # Wait a few seconds to make sure FastAPI is up
 sleep 3
 
@@ -17,3 +14,8 @@ python vehicle_simulator/simulator.py &
 
 echo "Starting Daphne ASGI server on port 8001..."
 daphne -p 8001 vehicle_simulator.asgi:application &
+
+cd ..
+
+echo "Starting FastAPI app on port 8080..."
+uvicorn src.api.server:app --host 0.0.0.0 --port 8080 
