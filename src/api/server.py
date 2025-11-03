@@ -349,7 +349,7 @@ async def post_vehicle_update(payload: VehicleUpdateRequest):
             sensor_data=sensor_data
         )
         res["incident"]["emergency_response"] = emergency_res
-
+    logger.info(f"Response from vehicle Monitor {res}")
     return res
 
 
