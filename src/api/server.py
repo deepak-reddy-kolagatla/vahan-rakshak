@@ -111,6 +111,24 @@ class SpeedReadingRequest(BaseModel):
     speed_limit_kmh: float = Field(..., gt=0)
     timestamp_ms: Optional[int] = None
 
+class VehicleSafetyState(BaseModel):
+    fire: Optional[Dict[str, Any]] = None
+    water: Optional[Dict[str, Any]] = None
+    accident: Optional[Dict[str, Any]] = None
+
+class VehicleIncidentPayload(BaseModel):
+    vehicle_id: str
+    timestamp_ms: Optional[int] = Field(default_factory=lambda: int(datetime.now().timestamp() * 1000))
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    alt: Optional[float] = None
+    vehicle_safety_state: Optional[VehicleSafetyState] = None
+
+class VehicleUpdateRequest(BaseModel):
+    driver_data: Optional[DriverMonitoringRequest] = None
+    speed_data: Optional[SpeedReadingRequest] = None
+    incident_data: Optional[VehicleIncidentPayload] = None
+
 
 class GatekeeperInvokeRequest(BaseModel):
     action: str = Field(..., description="Gatekeeper action name (e.g., scan_cargo, check_compliance, authorize_vehicle)")
@@ -226,24 +244,55 @@ async def get_openapi_examples() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Failed to load swagger JSON")
 
 
-@app.post("/v1/driver/monitoring")
-async def post_driver_monitoring(payload: DriverMonitoringRequest) -> Dict[str, Any]:
+@app.post("/v1/vehicle/update")
+async def post_vehicle_update(payload: VehicleUpdateRequest):
+    """
+    Unified endpoint for driver monitoring, speed, and incident data.
+    Delegates to Watsonx Guardian/Incident agents accordingly.
+    """
     caller = _require_caller()
-    sensor_data = {
-        "eye_closure_pct": payload.eye_closure_pct,
-        "blink_duration_ms": payload.blink_duration_ms,
-        "yawning_rate_per_min": payload.yawning_rate_per_min,
-        "steering_variability": payload.steering_variability,
-        "lane_departures": payload.lane_departures,
-    }
-    res = caller.call_guardian_agent(
-        agent_id=GUARDIAN_AGENT_ID,
-        vehicle_id=payload.vehicle_id,
-        action=WATSONX_GUARDIAN_ACTION_MONITOR,
-        sensor_data=sensor_data,
-    )
-    # Return the full agent response with assessment/decision
-    logger.info(f"Driver Monitoring metrics : {res}")
+    res = {}
+
+    # --- Driver monitoring ---
+    if payload.driver_data:
+        driver_sensor = {
+            "eye_closure_pct": payload.driver_data.eye_closure_pct,
+            "blink_duration_ms": payload.driver_data.blink_duration_ms,
+            "yawning_rate_per_min": payload.driver_data.yawning_rate_per_min,
+            "steering_variability": payload.driver_data.steering_variability,
+            "lane_departures": payload.driver_data.lane_departures,
+        }
+        res["driver"] = caller.call_guardian_agent(
+            agent_id=GUARDIAN_AGENT_ID,
+            vehicle_id=payload.driver_data.vehicle_id,
+            action=WATSONX_GUARDIAN_ACTION_MONITOR,
+            sensor_data=driver_sensor
+        )
+
+    # --- Speed ---
+    if payload.speed_data:
+        speed_sensor = {
+            "current_speed_kmh": payload.speed_data.current_speed_kmh,
+            "speed_limit_kmh": payload.speed_data.speed_limit_kmh,
+            "timestamp_ms": payload.speed_data.timestamp_ms or int(datetime.now().timestamp() * 1000),
+        }
+        res["speed"] = caller.call_guardian_agent(
+            agent_id=GUARDIAN_AGENT_ID,
+            vehicle_id=payload.speed_data.vehicle_id,
+            action=WATSONX_GUARDIAN_ACTION_SPEED,
+            sensor_data=speed_sensor
+        )
+
+    # --- Vehicle incident / safety ---
+    if payload.incident_data:
+        incident_sensor = payload.incident_data.dict()
+        res["incident"] = caller.call_guardian_agent(
+            agent_id=GUARDIAN_AGENT_ID,
+            vehicle_id=payload.incident_data.vehicle_id,
+            action="process_incident",
+            sensor_data=incident_sensor
+        )
+
     return res
 
 
@@ -260,23 +309,6 @@ async def post_gatekeeper_run(body: GatekeeperInvokeRequest) -> Dict[str, Any]:
     return res
 
 
-@app.post("/v1/speed")
-async def post_speed_reading(payload: SpeedReadingRequest) -> Dict[str, Any]:
-    caller = _require_caller()
-    sensor_data = {
-        "current_speed_kmh": payload.current_speed_kmh,
-        "speed_limit_kmh": payload.speed_limit_kmh,
-        "timestamp_ms": payload.timestamp_ms or int(datetime.now().timestamp() * 1000),
-    }
-    res = caller.call_guardian_agent(
-        agent_id=GUARDIAN_AGENT_ID,
-        vehicle_id=payload.vehicle_id,
-        action=WATSONX_GUARDIAN_ACTION_SPEED,
-        sensor_data=sensor_data,
-    )
-    # Return the full agent response with assessment/decision
-    logger.info(f"Driver speed metrics : {res}")
-    return res
 
 
 # ============ Cargo Scanner ============
